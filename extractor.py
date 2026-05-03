@@ -43,6 +43,13 @@ Extrae exactamente estos datos del ticket y responde SOLO con JSON, sin texto ad
     respuesta = mensaje.content[0].text.strip()
     print(f"Respuesta de Claude: {respuesta}")
     
+    # Verificar si Claude no pudo leer el ticket
+    if not respuesta or len(respuesta) < 10:
+        raise ValueError("❌ No se pudo leer el ticket. Verifica que la imagen sea clara y legible.")
+    
+    if any(palabra in respuesta.lower() for palabra in ["no puedo", "no es posible", "imagen borrosa", "ilegible", "cannot", "unclear"]):
+        raise ValueError("❌ La imagen está borrosa o es ilegible. Toma una foto más clara del ticket.")
+    
     # Buscar JSON en la respuesta
     match = re.search(r'\{.*\}', respuesta, re.DOTALL)
     if match:
