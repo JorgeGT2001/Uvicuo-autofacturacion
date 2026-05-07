@@ -17,18 +17,27 @@ async def facturar_ticket(datos_ticket: dict):
         
         try:
             print("Abriendo portal de OXXO...")
-            await page.goto("https://www4.oxxo.com:9443/facturacionElectronica-web/views/layout/inicio.do", timeout=30000)
-            await page.wait_for_load_state("networkidle")
+            try:
+                await page.goto("https://www4.oxxo.com:9443/facturacionElectronica-web/views/layout/inicio.do", timeout=30000)
+                await page.wait_for_load_state("networkidle", timeout=30000)
+            except Exception:
+                raise Exception("🌐 Portal de OXXO no disponible. Intenta más tarde.")
+            
             await page.wait_for_timeout(5000)
             
-            print("Cerrando popup...")
-            await page.evaluate("""
-                Array.from(document.querySelectorAll('.ui-dialog-titlebar-close'))
-                    .find(el => el.getBoundingClientRect().top > 0 && el.getBoundingClientRect().top < 500)
-                    .click()
-            """)
-            await page.wait_for_timeout(2000)
-            print("Popup cerrado.")
+            # Cerrar popup — si no aparece en 10 seg, continuar
+            print("Esperando popup...")
+            try:
+                await page.wait_for_selector('.ui-dialog-titlebar-close', timeout=10000)
+                await page.evaluate("""
+                    Array.from(document.querySelectorAll('.ui-dialog-titlebar-close'))
+                        .find(el => el.getBoundingClientRect().top > 0 && el.getBoundingClientRect().top < 500)
+                        .click()
+                """)
+                await page.wait_for_timeout(2000)
+                print("Popup cerrado.")
+            except Exception:
+                print("Popup no apareció, continuando...")
             
             print("Llenando fecha...")
             await page.evaluate(f"""
@@ -62,10 +71,11 @@ async def facturar_ticket(datos_ticket: dict):
             """)
             await page.wait_for_timeout(4000)
             
-            # Verificar si el ticket es válido
+            # Verificar errores del portal
             contenido = await page.content()
             if "inválido" in contenido or "invalido" in contenido.lower():
-                raise Exception("❌ El ticket es inválido. Verifica los datos.")
+                await browser.close()
+                return "invalido"
             if "ya fue facturado" in contenido.lower() or "facturado previamente" in contenido.lower():
                 raise Exception("❌ Este ticket ya fue facturado anteriormente.")
             if "no han transcurrido" in contenido.lower() or "24 horas" in contenido.lower():
@@ -136,29 +146,64 @@ async def facturar_ticket(datos_ticket: dict):
             """)
             await page.wait_for_timeout(5000)
             
+            # Intentar enviar por correo
             print("Ingresando correo...")
-            await page.locator('input[name="form:emailEnv"]').fill("jorgegarciatapia@live.com")
-            await page.wait_for_timeout(500)
+            try:
+                await page.locator('input[name="form:emailEnv"]').fill("jorgegarciatapia@live.com")
+                await page.wait_for_timeout(500)
+                
+                print("Enviando correo...")
+                await page.evaluate("""
+                    Array.from(document.querySelectorAll('a, button'))
+                        .find(el => el.textContent.includes('Enviar correo'))
+                        .click()
+                """)
+                await page.wait_for_timeout(3000)
+                await page.screenshot(path="paso4_enviado.png")
+                print("✅ Factura enviada a jorgegarciatapia@live.com")
+                
+            except Exception:
+                # Si falla el correo, descargar PDF y XML
+                print("⚠️ No se pudo enviar el correo. Descargando PDF y XML...")
+                try:
+                    async with page.expect_download() as download_info:
+                        await page.evaluate("""
+                            Array.from(document.querySelectorAll('a, button'))
+                                .find(el => el.textContent.includes('Descargar PDF'))
+                                .click()
+                        """)
+                    download = await download_info.value
+                    await download.save_as("factura.pdf")
+                    print("✅ PDF descargado: factura.pdf")
+                except Exception:
+                    print("⚠️ No se pudo descargar el PDF")
+                
+                try:
+                    async with page.expect_download() as download_info:
+                        await page.evaluate("""
+                            Array.from(document.querySelectorAll('a, button'))
+                                .find(el => el.textContent.includes('Descargar XML'))
+                                .click()
+                        """)
+                    download = await download_info.value
+                    await download.save_as("factura.xml")
+                    print("✅ XML descargado: factura.xml")
+                except Exception:
+                    print("⚠️ No se pudo descargar el XML")
             
-            print("Enviando correo...")
-            await page.evaluate("""
-                Array.from(document.querySelectorAll('a, button'))
-                    .find(el => el.textContent.includes('Enviar correo'))
-                    .click()
-            """)
-            await page.wait_for_timeout(3000)
-            
-            await page.screenshot(path="paso4_enviado.png")
-            print("✅ Factura enviada a jorgegarciatapia@live.com")
+            # Esperar 5 segundos y cerrar
+            print("Cerrando navegador en 5 segundos...")
+            await page.wait_for_timeout(5000)
+            await browser.close()
+            return "ok"
             
         except Exception as e:
             print(f"\n❌ Error: {e}")
             await page.screenshot(path="error.png")
             print("Screenshot del error guardado: error.png")
-        
-        finally:
-            input("Presiona Enter para cerrar el navegador...")
+            await page.wait_for_timeout(5000)
             await browser.close()
+            return "error"
 
 if __name__ == "__main__":
     datos = {
