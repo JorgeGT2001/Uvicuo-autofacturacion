@@ -173,8 +173,8 @@ async def facturar_ticket(datos_ticket: dict):
                                 .click()
                         """)
                     download = await download_info.value
-                    await download.save_as("factura.pdf")
-                    print("✅ PDF descargado: factura.pdf")
+                    await download.save_as(f"factura_{datos_ticket['folio_venta']}.pdf")
+                    print(f"✅ PDF descargado: factura_{datos_ticket['folio_venta']}.pdf")
                 except Exception:
                     print("⚠️ No se pudo descargar el PDF")
                 
@@ -186,8 +186,8 @@ async def facturar_ticket(datos_ticket: dict):
                                 .click()
                         """)
                     download = await download_info.value
-                    await download.save_as("factura.xml")
-                    print("✅ XML descargado: factura.xml")
+                    await download.save_as(f"factura_{datos_ticket['folio_venta']}.xml")
+                    print(f"✅ XML descargado: factura_{datos_ticket['folio_venta']}.xml")
                 except Exception:
                     print("⚠️ No se pudo descargar el XML")
             
