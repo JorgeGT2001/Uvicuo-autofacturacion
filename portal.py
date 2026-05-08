@@ -23,16 +23,14 @@ async def facturar_ticket(datos_ticket: dict):
             except Exception:
                 raise Exception("🌐 Portal de OXXO no disponible. Intenta más tarde.")
             
-            await page.wait_for_timeout(5000)
+            await page.wait_for_timeout(10000)
             
-            # Cerrar popup — si no aparece en 10 seg, continuar
-            print("Esperando popup...")
+            print("Cerrando popup...")
             try:
-                await page.wait_for_selector('.ui-dialog-titlebar-close', timeout=10000)
                 await page.evaluate("""
-                    Array.from(document.querySelectorAll('.ui-dialog-titlebar-close'))
-                        .find(el => el.getBoundingClientRect().top > 0 && el.getBoundingClientRect().top < 500)
-                        .click()
+                    var popup = Array.from(document.querySelectorAll('.ui-dialog-titlebar-close'))
+                        .find(el => el.getBoundingClientRect().top > 0 && el.getBoundingClientRect().top < 500);
+                    if (popup) popup.click();
                 """)
                 await page.wait_for_timeout(2000)
                 print("Popup cerrado.")
@@ -71,23 +69,42 @@ async def facturar_ticket(datos_ticket: dict):
             """)
             await page.wait_for_timeout(4000)
             
+            # Leer mensaje de error del growl si existe
+            mensaje_error = await page.evaluate("""
+                (() => {
+                    var growl = document.querySelector('.ui-growl-item');
+                    return growl ? growl.textContent.trim() : '';
+                })()
+            """)
+            if mensaje_error:
+                print(f"📋 Mensaje del portal: {mensaje_error}")
+            
             # Verificar errores del portal
             contenido = await page.content()
-            if "inválido" in contenido or "invalido" in contenido.lower():
+            if "inválido" in contenido or "invalido" in contenido.lower() or "no tuvo éxito" in mensaje_error.lower():
                 await browser.close()
                 return "invalido"
             if "ya fue facturado" in contenido.lower() or "facturado previamente" in contenido.lower():
                 raise Exception("❌ Este ticket ya fue facturado anteriormente.")
             if "no han transcurrido" in contenido.lower() or "24 horas" in contenido.lower():
                 raise Exception("❌ Debes esperar 24 horas después de la compra para facturar.")
-            
+                      
             print("Continuando a datos fiscales...")
             await page.evaluate("""
                 Array.from(document.querySelectorAll('a, button, input[type=button]'))
                     .find(el => el.textContent.includes('Continuar'))
                     .click()
             """)
-            await page.wait_for_timeout(2000)
+            await page.wait_for_timeout(4000)
+            
+            # Verificar si el ticket fue aceptado
+            rfc_habilitado = await page.evaluate(
+                "(() => { var rfc = document.querySelector('input[name=\"form:rfc\"]'); return rfc ? !rfc.disabled : false; })()"
+            )
+            if not rfc_habilitado:
+                print("⚠️ Ticket inválido — campos fiscales deshabilitados.")
+                await browser.close()
+                return "invalido"
             
             print("Llenando RFC...")
             await page.locator('input[name="form:rfc"]').fill(DATOS_FISCALES["rfc"])
@@ -146,7 +163,6 @@ async def facturar_ticket(datos_ticket: dict):
             """)
             await page.wait_for_timeout(5000)
             
-            # Intentar enviar por correo
             print("Ingresando correo...")
             try:
                 await page.locator('input[name="form:emailEnv"]').fill("jorgegarciatapia@live.com")
@@ -163,7 +179,6 @@ async def facturar_ticket(datos_ticket: dict):
                 print("✅ Factura enviada a jorgegarciatapia@live.com")
                 
             except Exception:
-                # Si falla el correo, descargar PDF y XML
                 print("⚠️ No se pudo enviar el correo. Descargando PDF y XML...")
                 try:
                     async with page.expect_download() as download_info:
@@ -191,7 +206,6 @@ async def facturar_ticket(datos_ticket: dict):
                 except Exception:
                     print("⚠️ No se pudo descargar el XML")
             
-            # Esperar 5 segundos y cerrar
             print("Cerrando navegador en 5 segundos...")
             await page.wait_for_timeout(5000)
             await browser.close()
@@ -199,18 +213,21 @@ async def facturar_ticket(datos_ticket: dict):
             
         except Exception as e:
             print(f"\n❌ Error: {e}")
-            await page.screenshot(path="error.png")
-            print("Screenshot del error guardado: error.png")
-            await page.wait_for_timeout(5000)
+            try:
+                await page.screenshot(path="error.png")
+                print("Screenshot del error guardado: error.png")
+            except:
+                pass
+            await page.wait_for_timeout(3000)
             await browser.close()
             return "error"
 
 if __name__ == "__main__":
     datos = {
-        "fecha": "03/05/2026",
-        "folio_venta": "878765",
-        "id_venta": "10GUD508DZ1",
-        "total": "42.00"
+        "fecha": "29/04/2026",
+        "folio_venta": "560818",
+        "id_venta": "10GUD50N1N1",
+        "total": "494.00"
     }
     
     asyncio.run(facturar_ticket(datos))
