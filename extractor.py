@@ -84,7 +84,7 @@ def validar_y_limpiar_datos(datos: dict) -> dict:
     
     # Validar ID de venta
     id_venta = datos.get("id_venta", "")
-    if not re.match(r'^10[A-Z]{3}[0-9]{3}[A-Z]{2}[0-9]{1}$', id_venta):
+    if not re.match(r'^10[A-Z]{3}[0-9]{2}[A-Z0-9]{3}[0-9]{1}$', id_venta):
         errores.append(f"⚠️ ID de venta con formato sospechoso: {id_venta}")
     
     for error in errores:
